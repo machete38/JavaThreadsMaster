@@ -1,10 +1,17 @@
 package com.example.javathreadsmaster.database;
 
+import android.content.ContentValues;
 import android.content.Context;
+import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 
 import androidx.annotation.Nullable;
+
+import com.example.javathreadsmaster.models.Book;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class DatabaseHelper extends SQLiteOpenHelper {
 
@@ -61,5 +68,79 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     @Override
     public void onUpgrade(SQLiteDatabase sqLiteDatabase, int i, int i1) {
 
+    }
+
+    //CRUD операции с Book
+    public synchronized long addBook(Book book){
+        SQLiteDatabase db = this.getWritableDatabase();
+        ContentValues values = new ContentValues();
+        values.put("title", book.getName());
+        values.put("author", book.getAuthor());
+        values.put("year", book.getYear());
+        values.put("isbn", book.getIsbn());
+        values.put("borrowed", book.isBorrowed() ? 1 : 0);
+        long id = db.insert("books", null, values);
+        db.close();
+        return id;
+    }
+
+    public synchronized Book getBook(long id){
+        SQLiteDatabase db = this.getReadableDatabase();
+        Cursor cursor = db.query("books", null, "id = ?", new String[]{String.valueOf(id)}, null, null, null);
+        Book book = null;
+        if (cursor.moveToFirst()){
+            book = new Book(
+                    cursor.getLong(0),
+                    cursor.getString(1),
+                    cursor.getInt(2),
+                    cursor.getString(3),
+                    cursor.getString(4),
+                    cursor.getInt(4) == 1
+            );
+            cursor.close();
+        }
+        db.close();
+        return book;
+    }
+
+    public synchronized List<Book> getAllBooks() {
+        List<Book> books = new ArrayList<>();
+        SQLiteDatabase db = this.getReadableDatabase();
+        Cursor cursor = db.rawQuery("SELECT * FROM books", null);
+        if (cursor.moveToFirst()) {
+            do {
+                Book book = new Book(
+                        cursor.getLong(0),
+                        cursor.getString(1),
+                        cursor.getInt(2),
+                        cursor.getString(3),
+                        cursor.getString(4),
+                        cursor.getInt(4) == 1
+                );
+                books.add(book);
+            } while (cursor.moveToNext());
+        }
+        cursor.close();
+        db.close();
+        return books;
+    }
+
+    public synchronized int updateBook(Book book) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        ContentValues values = new ContentValues();
+        values.put("title", book.getName());
+        values.put("author", book.getAuthor());
+        values.put("year", book.getYear());
+        values.put("isbn", book.getIsbn());
+        values.put("borrowed", book.isBorrowed() ? 1 : 0);
+        int rowsAffected = db.update("books", values, "id = ?", new String[]{String.valueOf(book.getId())});
+        db.close();
+        return rowsAffected;
+    }
+
+    public synchronized void deleteBook(long id) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        db.delete("books", "id = ?", new String[]{String.valueOf(id)});
+        db.close();
     }
 }

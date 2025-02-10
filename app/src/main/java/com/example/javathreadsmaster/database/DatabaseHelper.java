@@ -9,14 +9,20 @@ import android.database.sqlite.SQLiteOpenHelper;
 import androidx.annotation.Nullable;
 
 import com.example.javathreadsmaster.models.Book;
+import com.example.javathreadsmaster.models.Borrowing;
+import com.example.javathreadsmaster.models.User;
 
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 
 public class DatabaseHelper extends SQLiteOpenHelper {
 
     private static final String DATABASE_NAME = "library.db";
-    private static final int DATABASE_VERSION = 1;
+    private static final int DATABASE_VERSION = 2;
 
     public DatabaseHelper(Context context) {
         super(context, DATABASE_NAME, null, DATABASE_VERSION);
@@ -30,6 +36,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     private static final String KEY_AUTHOR = "author";
     private static final String KEY_YEAR = "year";
     private static final String KEY_ISBN = "isbn";
+    private static final String KEY_BORROWED = "borrowed";
 
 
     private static final String KEY_USERNAME = "username";
@@ -48,7 +55,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 KEY_TITLE + " TEXT, " +
                 KEY_AUTHOR + " TEXT, " +
                 KEY_YEAR + " INTEGER," +
-                KEY_ISBN +" TEXT)");
+                KEY_ISBN +" TEXT," +
+                KEY_BORROWED +" INTEGER)");
 
         String CREATE_USERS_TABLE = "CREATE TABLE users ("
                 + KEY_ID + " INTEGER PRIMARY KEY AUTOINCREMENT,"
@@ -107,15 +115,30 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         List<Book> books = new ArrayList<>();
         SQLiteDatabase db = this.getReadableDatabase();
         Cursor cursor = db.rawQuery("SELECT * FROM books", null);
+
+        int idIndex = cursor.getColumnIndex("id");
+        int titleIndex = cursor.getColumnIndex("title");
+        int authorIdIndex = cursor.getColumnIndex("author");
+        int yearIndex = cursor.getColumnIndex("year");
+        int isbnIndex = cursor.getColumnIndex("isbn");
+        int borrowedIndex = cursor.getColumnIndex("borrowed");
+
+        if (idIndex < 0 || titleIndex < 0 || authorIdIndex < 0 || yearIndex < 0 || isbnIndex < 0 || borrowedIndex < 0) {
+            // Обработка ошибки: один или несколько ожидаемых столбцов отсутствуют
+            cursor.close();
+            db.close();
+            throw new IllegalStateException("Database schema doesn't match expected Books table structure");
+        }
+
         if (cursor.moveToFirst()) {
             do {
                 Book book = new Book(
-                        cursor.getLong(0),
-                        cursor.getString(1),
-                        cursor.getInt(2),
-                        cursor.getString(3),
-                        cursor.getString(4),
-                        cursor.getInt(4) == 1
+                        cursor.getLong(idIndex),
+                        cursor.getString(titleIndex),
+                        cursor.getInt(yearIndex),
+                        cursor.getString(authorIdIndex),
+                        cursor.getString(isbnIndex),
+                        cursor.getInt(borrowedIndex) == 1
                 );
                 books.add(book);
             } while (cursor.moveToNext());
@@ -143,4 +166,208 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         db.delete("books", "id = ?", new String[]{String.valueOf(id)});
         db.close();
     }
+
+    // CRUD операции с User
+    public synchronized long addUser(User user){
+        SQLiteDatabase db = this.getWritableDatabase();
+        ContentValues values = new ContentValues();
+        values.put("username", user.getUsername());
+        values.put("borrowed_books_count", user.getBorrowedBooksCount());
+        long id = db.insert("users", null, values);
+        db.close();
+        return id;
+    }
+
+    public synchronized User getUser(long id){
+        SQLiteDatabase db = this.getReadableDatabase();
+        Cursor cursor = db.query("users", null, "id = ?", new String[]{String.valueOf(id)},null,null,null);
+        User user = null;
+        if (cursor.moveToFirst()){
+            user = new User(
+                    cursor.getLong(0),
+                    cursor.getString(1)
+            );
+            cursor.close();
+        }
+        db.close();
+        return user;
+    }
+
+    public synchronized List<User> getAllUsers(){
+        SQLiteDatabase db = this.getReadableDatabase();
+        Cursor cursor = db.rawQuery("SELECT * FROM users", null);
+        List<User> users = new ArrayList<>();
+        if (cursor.moveToFirst()){
+            do {
+                User user = new User(
+                        cursor.getLong(0),
+                        cursor.getString(1)
+                );
+                users.add(user);
+            }
+            while (cursor.moveToNext());
+        }
+        cursor.close();
+        db.close();
+        return users;
+    }
+
+    public synchronized int updateUser(User user){
+        SQLiteDatabase db = this.getWritableDatabase();
+        ContentValues values = new ContentValues();
+        values.put("username", user.getUsername());
+        values.put("borrowed_books_count", user.getBorrowedBooksCount());
+        int id = db.update("users", values, "id =? ", new String[]{String.valueOf(user.getId())});
+        db.close();
+        return id;
+    }
+
+    public synchronized void deleteUser(long id){
+        SQLiteDatabase db = this.getWritableDatabase();
+        db.delete("users", "id = ?", new String[]{String.valueOf(id)});
+        db.close();
+    }
+
+
+    // CRUD операции с Borrowing
+    public synchronized long addBorrowing(Borrowing borrowing){
+        SQLiteDatabase db = this.getWritableDatabase();
+        ContentValues values = new ContentValues();
+
+        values.put("book_id", borrowing.getBookId());
+        values.put("user_id", borrowing.getUserId());
+
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault());
+
+        if (borrowing.getBorrowingStart() != null) {
+            values.put("borrow_date", dateFormat.format(borrowing.getBorrowingStart()));
+        }
+
+        if (borrowing.getBorrowingEnd() != null) {
+            values.put("return_date", dateFormat.format(borrowing.getBorrowingEnd()));
+        }
+
+        long id = db.insert("borrowings", null, values);
+        db.close();
+        return id;
+    }
+
+    public synchronized Borrowing getBorrowing(long id) {
+        SQLiteDatabase db = this.getReadableDatabase();
+        Borrowing borrowing = null;
+
+        Cursor cursor = db.query("borrowings", null, "id = ?",
+                new String[]{String.valueOf(id)}, null, null, null);
+
+        if (cursor.moveToFirst()) {
+            SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault());
+
+            long bookId = cursor.getLong(0);
+            long userId = cursor.getLong(1);
+
+            Date borrowDate = null;
+            Date returnDate = null;
+
+            try {
+                String borrowDateStr = cursor.getString(2);
+                if (borrowDateStr != null) {
+                    borrowDate = dateFormat.parse(borrowDateStr);
+                }
+
+                String returnDateStr = cursor.getString(3);
+                if (returnDateStr != null) {
+                    returnDate = dateFormat.parse(returnDateStr);
+                }
+            } catch (ParseException e) {
+                e.printStackTrace();
+            }
+
+            borrowing = new Borrowing(id, bookId, userId, borrowDate, returnDate);
+            cursor.close();
+        }
+
+        db.close();
+        return borrowing;
+    }
+
+    public synchronized List<Borrowing> getAllBorrowings() {
+        List<Borrowing> borrowings = new ArrayList<>();
+        SQLiteDatabase db = this.getReadableDatabase();
+        Cursor cursor = db.rawQuery("SELECT * FROM borrowings", null);
+
+        int idIndex = cursor.getColumnIndex("id");
+        int bookIdIndex = cursor.getColumnIndex("book_id");
+        int userIdIndex = cursor.getColumnIndex("user_id");
+        int borrowDateIndex = cursor.getColumnIndex("borrow_date");
+        int returnDateIndex = cursor.getColumnIndex("return_date");
+
+        if (idIndex < 0 || bookIdIndex < 0 || userIdIndex < 0 || borrowDateIndex < 0 || returnDateIndex < 0) {
+            // Обработка ошибки: один или несколько ожидаемых столбцов отсутствуют
+            cursor.close();
+            db.close();
+            throw new IllegalStateException("Database schema doesn't match expected Borrowing table structure");
+        }
+
+        if (cursor.moveToFirst()) {
+            SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault());
+            do {
+                long id = cursor.getLong(idIndex);
+                long bookId = cursor.getLong(bookIdIndex);
+                long userId = cursor.getLong(userIdIndex);
+
+                Date borrowDate = null;
+                Date returnDate = null;
+
+                try {
+                    String borrowDateStr = cursor.getString(borrowDateIndex);
+                    if (borrowDateStr != null && !borrowDateStr.isEmpty()) {
+                        borrowDate = dateFormat.parse(borrowDateStr);
+                    }
+
+                    String returnDateStr = cursor.getString(returnDateIndex);
+                    if (returnDateStr != null && !returnDateStr.isEmpty()) {
+                        returnDate = dateFormat.parse(returnDateStr);
+                    }
+                } catch (ParseException e) {
+                    e.printStackTrace();
+                    // Можно добавить логирование или обработку ошибки парсинга даты
+                }
+
+                Borrowing borrowing = new Borrowing(id, bookId, userId, borrowDate, returnDate);
+                borrowings.add(borrowing);
+            } while (cursor.moveToNext());
+        }
+
+        cursor.close();
+        db.close();
+        return borrowings;
+    }
+
+    public synchronized int updateBorrowing(Borrowing borrowing) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        ContentValues values = new ContentValues();
+
+        values.put("book_id", borrowing.getBookId());
+        values.put("user_id", borrowing.getUserId());
+
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault());
+
+        if (borrowing.getBorrowingStart() != null) {
+            values.put("borrow_date", dateFormat.format(borrowing.getBorrowingStart()));
+        }
+
+        if (borrowing.getBorrowingEnd() != null) {
+            values.put("return_date", dateFormat.format(borrowing.getBorrowingEnd()));
+        }
+        int rowsAffected = db.update("borrowings", values, "id = ?", new String[]{String.valueOf(borrowing.getId())});
+        db.close();
+        return rowsAffected;
+    }
+
+    public synchronized void deleteBorrowing(long id) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        db.delete("borrowings", "id = ?", new String[]{String.valueOf(id)});
+        db.close();
+    }
+
 }

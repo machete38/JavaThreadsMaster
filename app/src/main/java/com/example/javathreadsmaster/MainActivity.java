@@ -1,5 +1,6 @@
 package com.example.javathreadsmaster;
 
+import android.content.Intent;
 import android.os.Bundle;
 import android.view.View;
 
@@ -28,7 +29,8 @@ public class MainActivity extends AppCompatActivity {
         binding.btnManageBooks.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-
+                Intent i = new Intent(MainActivity.this, BooksManagementActivity.class);
+                startActivity(i);
             }
         });
 

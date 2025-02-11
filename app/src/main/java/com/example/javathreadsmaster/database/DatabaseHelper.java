@@ -18,14 +18,18 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Future;
 
 public class DatabaseHelper extends SQLiteOpenHelper {
 
     private static final String DATABASE_NAME = "library.db";
     private static final int DATABASE_VERSION = 2;
 
+    private volatile ConcurrentHashMap<Long, Book> bookCache;
     public DatabaseHelper(Context context) {
         super(context, DATABASE_NAME, null, DATABASE_VERSION);
+        bookCache = new ConcurrentHashMap<>();
     }
 
     // Общие имена колонок
@@ -89,10 +93,18 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         values.put("borrowed", book.isBorrowed() ? 1 : 0);
         long id = db.insert("books", null, values);
         db.close();
+        if (id != -1) {
+            book.setId(id);
+            bookCache.put(id, book);
+        }
         return id;
     }
 
     public synchronized Book getBook(long id){
+        Book cachedBook = bookCache.get(id);
+        if (cachedBook != null) {
+            return cachedBook;
+        }
         SQLiteDatabase db = this.getReadableDatabase();
         Cursor cursor = db.query("books", null, "id = ?", new String[]{String.valueOf(id)}, null, null, null);
         Book book = null;
@@ -106,6 +118,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                     cursor.getInt(4) == 1
             );
             cursor.close();
+            bookCache.put(id, book);
         }
         db.close();
         return book;
@@ -116,12 +129,12 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         SQLiteDatabase db = this.getReadableDatabase();
         Cursor cursor = db.rawQuery("SELECT * FROM books", null);
 
-        int idIndex = cursor.getColumnIndex("id");
-        int titleIndex = cursor.getColumnIndex("title");
-        int authorIdIndex = cursor.getColumnIndex("author");
-        int yearIndex = cursor.getColumnIndex("year");
-        int isbnIndex = cursor.getColumnIndex("isbn");
-        int borrowedIndex = cursor.getColumnIndex("borrowed");
+        int idIndex = cursor.getColumnIndex(KEY_ID);
+        int titleIndex = cursor.getColumnIndex(KEY_TITLE);
+        int authorIdIndex = cursor.getColumnIndex(KEY_AUTHOR);
+        int yearIndex = cursor.getColumnIndex(KEY_YEAR);
+        int isbnIndex = cursor.getColumnIndex(KEY_ISBN);
+        int borrowedIndex = cursor.getColumnIndex(KEY_BORROWED);
 
         if (idIndex < 0 || titleIndex < 0 || authorIdIndex < 0 || yearIndex < 0 || isbnIndex < 0 || borrowedIndex < 0) {
             // Обработка ошибки: один или несколько ожидаемых столбцов отсутствуют
@@ -141,6 +154,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                         cursor.getInt(borrowedIndex) == 1
                 );
                 books.add(book);
+                bookCache.put(book.getId(), book);
             } while (cursor.moveToNext());
         }
         cursor.close();
@@ -151,11 +165,11 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     public synchronized int updateBook(Book book) {
         SQLiteDatabase db = this.getWritableDatabase();
         ContentValues values = new ContentValues();
-        values.put("title", book.getName());
-        values.put("author", book.getAuthor());
-        values.put("year", book.getYear());
-        values.put("isbn", book.getIsbn());
-        values.put("borrowed", book.isBorrowed() ? 1 : 0);
+        values.put(KEY_TITLE, book.getName());
+        values.put(KEY_AUTHOR, book.getAuthor());
+        values.put(KEY_YEAR, book.getYear());
+        values.put(KEY_ISBN, book.getIsbn());
+        values.put(KEY_BORROWED, book.isBorrowed() ? 1 : 0);
         int rowsAffected = db.update("books", values, "id = ?", new String[]{String.valueOf(book.getId())});
         db.close();
         return rowsAffected;
@@ -167,6 +181,47 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         db.close();
     }
 
+    public List<Book> searchBooks(String query)
+    {
+       List<Book> results = new ArrayList<>();
+        SQLiteDatabase db = this.getReadableDatabase();
+        String[] columns = {KEY_ID, KEY_TITLE, KEY_AUTHOR, KEY_YEAR, KEY_ISBN, KEY_BORROWED};
+        String selection = KEY_TITLE+" like ? OR "+KEY_AUTHOR +" like ?";
+        String[] selectionArgs = {"%" + query + "%", "%"+ query + "%"};
+        Cursor cursor = db.query("books",columns, selection, selectionArgs, null, null, null);
+
+        int idIndex = cursor.getColumnIndex(KEY_ID);
+        int titleIndex = cursor.getColumnIndex(KEY_TITLE);
+        int authorIdIndex = cursor.getColumnIndex(KEY_AUTHOR);
+        int yearIndex = cursor.getColumnIndex(KEY_YEAR);
+        int isbnIndex = cursor.getColumnIndex(KEY_ISBN);
+        int borrowedIndex = cursor.getColumnIndex(KEY_BORROWED);
+
+        if (idIndex < 0 || titleIndex < 0 || authorIdIndex < 0 || yearIndex < 0 || isbnIndex < 0 || borrowedIndex < 0) {
+            cursor.close();
+            db.close();
+            throw new IllegalStateException("Database schema doesn't match expected Books table structure");
+        }
+
+        if (cursor.moveToFirst()) {
+            do {
+                Book book = new Book(
+                        cursor.getLong(idIndex),
+                        cursor.getString(titleIndex),
+                        cursor.getInt(yearIndex),
+                        cursor.getString(authorIdIndex),
+                        cursor.getString(isbnIndex),
+                        cursor.getInt(borrowedIndex) == 1
+                );
+                results.add(book);
+                bookCache.put(book.getId(), book);
+            } while (cursor.moveToNext());
+        }
+        cursor.close();
+        db.close();
+        return results;
+
+    }
     // CRUD операции с User
     public synchronized long addUser(User user){
         SQLiteDatabase db = this.getWritableDatabase();

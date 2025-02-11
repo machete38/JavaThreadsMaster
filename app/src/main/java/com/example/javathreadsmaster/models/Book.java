@@ -3,7 +3,7 @@ package com.example.javathreadsmaster.models;
 import java.util.Calendar;
 
 public class Book {
-    private final long id;
+    private long id;
     private String name;
     private int year;
     private String author;
@@ -19,6 +19,10 @@ public class Book {
         this.borrowed = borrowed;
     }
 
+    public void setId(long id)
+    {
+        this.id = id;
+    }
     public long getId() {
         return id;
     }

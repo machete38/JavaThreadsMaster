@@ -17,6 +17,7 @@ import com.example.javathreadsmaster.adapters.BookAdapter;
 import com.example.javathreadsmaster.databinding.ActivityBooksManagementBinding;
 import com.example.javathreadsmaster.models.Book;
 import com.example.javathreadsmaster.repositories.BooksRepository;
+import com.example.javathreadsmaster.tasks.DatabaseExecutor;
 import com.example.javathreadsmaster.utils.CRUDOperation;
 
 import java.lang.ref.WeakReference;
@@ -54,17 +55,14 @@ public class BooksManagementActivity extends AppCompatActivity implements BooksR
     }
 
     private void setButtons() {
-        binding.btnAdd.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                showAddBookDialog();
-            }
-        });
+        binding.btnAdd.setOnClickListener(view -> showAddBookDialog());
 
-        binding.btnUpdate.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                loadBooks();
+        binding.btnUpdate.setOnClickListener(view -> loadBooks());
+
+        binding.btnSearch.setOnClickListener(v -> {
+            String text = binding.etSearch.getText().toString();
+            if (!text.isBlank()) {
+                repository.searchBooks(text);
             }
         });
     }
@@ -109,4 +107,6 @@ public class BooksManagementActivity extends AppCompatActivity implements BooksR
     private void loadBooks() {
         repository.getAllBooks();
     }
+
+
 }

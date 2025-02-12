@@ -4,6 +4,7 @@ import android.content.DialogInterface;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.EditText;
+import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AlertDialog;
@@ -11,12 +12,14 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
+import androidx.recyclerview.widget.DividerItemDecoration;
 import androidx.recyclerview.widget.LinearLayoutManager;
 
 import com.example.javathreadsmaster.adapters.BookAdapter;
 import com.example.javathreadsmaster.databinding.ActivityBooksManagementBinding;
 import com.example.javathreadsmaster.models.Book;
 import com.example.javathreadsmaster.repositories.BooksRepository;
+import com.example.javathreadsmaster.repositories.BorrowingsRepository;
 import com.example.javathreadsmaster.tasks.DatabaseExecutor;
 import com.example.javathreadsmaster.utils.CRUDOperation;
 
@@ -24,7 +27,7 @@ import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.List;
 
-public class BooksManagementActivity extends AppCompatActivity implements BooksRepository.BooksRepCallback {
+public class BooksManagementActivity extends AppCompatActivity implements BooksRepository.BooksRepCallback, BorrowingsRepository.BorrowRepCallback {
 
     ActivityBooksManagementBinding binding;
     BooksRepository repository;
@@ -38,7 +41,7 @@ public class BooksManagementActivity extends AppCompatActivity implements BooksR
         binding = ActivityBooksManagementBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
 
-        repository = new BooksRepository(new WeakReference<>(this), this);
+        repository = new BooksRepository(getApplicationContext(), this);
         bookList = new ArrayList<>();
 
         setRV();
@@ -48,8 +51,10 @@ public class BooksManagementActivity extends AppCompatActivity implements BooksR
     }
 
     private void setRV() {
-        adapter = new BookAdapter(bookList);
-        binding.recyclerView.setLayoutManager(new LinearLayoutManager(this));
+        adapter = new BookAdapter(bookList, repository, new BorrowingsRepository(getApplicationContext(), this));
+        LinearLayoutManager layoutManager = new LinearLayoutManager(this);
+        binding.recyclerView.setLayoutManager(layoutManager);
+        binding.recyclerView.addItemDecoration(new DividerItemDecoration(this, DividerItemDecoration.VERTICAL));
         binding.recyclerView.setAdapter(adapter);
         loadBooks();
     }
@@ -92,16 +97,21 @@ public class BooksManagementActivity extends AppCompatActivity implements BooksR
     public void onDataRecieved(CRUDOperation operation, Object result) {
         switch (operation) {
             case ADD:
+            case UPDATE:
                 loadBooks();
                 break;
             case GET_ALL:
-                bookList.clear();
-                bookList.addAll((List<Book>) result);
-                adapter.notifyDataSetChanged();
+                updateBooksList((List<Book>) result);
                 break;
 
 
         }
+    }
+
+    private void updateBooksList(List<Book> values) {
+        bookList.clear();
+        bookList.addAll(values);
+        adapter.notifyDataSetChanged();
     }
 
     private void loadBooks() {
@@ -109,4 +119,17 @@ public class BooksManagementActivity extends AppCompatActivity implements BooksR
     }
 
 
+    @Override
+    public void onBorrowingsRecieved(CRUDOperation operation, Object value) {
+        switch (operation)
+        {
+            case ADD:
+                Toast.makeText(this, "New borrowing made successfuly!", Toast.LENGTH_SHORT).show();
+                break;
+            case REMOVE_BY_ID:
+                Toast.makeText(this, "Borrowing closed successfuly!", Toast.LENGTH_SHORT).show();
+                break;
+
+        }
+    }
 }

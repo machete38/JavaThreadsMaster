@@ -5,6 +5,8 @@ import android.content.Context;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
+import android.util.Log;
+import android.widget.Toast;
 
 import androidx.annotation.Nullable;
 
@@ -70,10 +72,10 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
         String CREATE_BORROWINGS_TABLE = "CREATE TABLE borrowings("
                 + KEY_ID + " INTEGER PRIMARY KEY AUTOINCREMENT,"
-                + KEY_BOOK_ID + " INTEGER,"
+                + KEY_BOOK_ID + " LONG,"
                 + KEY_USER_ID + " INTEGER,"
-                + KEY_BORROW_DATE + " TEXT,"
-                + KEY_RETURN_DATE + " TEXT" + ")";
+                + KEY_BORROW_DATE + " LONG,"
+                + KEY_RETURN_DATE + " LONG" + ")";
         db.execSQL(CREATE_BORROWINGS_TABLE);
     }
 
@@ -153,6 +155,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                         cursor.getString(isbnIndex),
                         cursor.getInt(borrowedIndex) == 1
                 );
+                Log.d("GET ALL BOOKS", "book id:"+book.getId());
                 books.add(book);
                 bookCache.put(book.getId(), book);
             } while (cursor.moveToNext());
@@ -181,6 +184,66 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         db.close();
     }
 
+    public List<Book> getOverdueBooks() {
+        List<Book> overdueBooks = new ArrayList<>();
+        SQLiteDatabase db = getReadableDatabase();
+        long currentTime = System.currentTimeMillis();
+
+        // Сначала получаем все просроченные borrowings
+        String borrowingsQuery = "SELECT book_id FROM borrowings WHERE "+KEY_RETURN_DATE+" > ?";
+        Cursor borrowingsCursor = db.rawQuery(borrowingsQuery, new String[]{String.valueOf(1)});
+
+        Log.d("BORROWINGS", "SEARCH");
+        int bookIdIndex = borrowingsCursor.getColumnIndex(KEY_BOOK_ID);
+        if (bookIdIndex < 0) {
+            // Обработка ошибки: один или несколько ожидаемых столбцов отсутствуют
+            borrowingsCursor.close();
+            db.close();
+            throw new IllegalStateException("Database schema doesn't match expected Books table structure");
+        }
+
+        if (borrowingsCursor.moveToFirst()) {
+            do {
+                long bookId = borrowingsCursor.getLong(bookIdIndex);
+
+                Log.d("BORROWINGS", "FOUND BORROWING ID "+bookId);
+                String bookQuery = "SELECT * FROM books WHERE id = ?";
+
+                Cursor bookCursor = db.rawQuery(bookQuery, new String[]{String.valueOf(bookId)});
+
+                int idIndex = bookCursor.getColumnIndex(KEY_ID);
+                int titleIndex = bookCursor.getColumnIndex(KEY_TITLE);
+                int authorIdIndex = bookCursor.getColumnIndex(KEY_AUTHOR);
+                int yearIndex = bookCursor.getColumnIndex(KEY_YEAR);
+                int isbnIndex = bookCursor.getColumnIndex(KEY_ISBN);
+
+                if ( idIndex < 0|| titleIndex < 0 || authorIdIndex < 0 || yearIndex < 0 || isbnIndex < 0)
+                {
+                    borrowingsCursor.close();
+                    db.close();
+                    throw new IllegalStateException("Database schema doesn't match expected Books table structure");
+                }
+                if (bookCursor.moveToFirst()) {
+
+                    Log.d("BORROWINGS", "FOUND BOOK");
+                    Book book = new Book(
+                            bookCursor.getLong(idIndex),
+                            bookCursor.getString(titleIndex),
+                            bookCursor.getInt(yearIndex),
+                            bookCursor.getString(authorIdIndex),
+                            bookCursor.getString(isbnIndex),
+                            true
+                    );
+
+                    overdueBooks.add(book);
+                }
+                bookCursor.close();
+            } while (borrowingsCursor.moveToNext());
+        }
+        borrowingsCursor.close();
+        db.close();
+        return overdueBooks;
+    }
     public List<Book> searchBooks(String query)
     {
        List<Book> results = new ArrayList<>();
@@ -289,18 +352,10 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         SQLiteDatabase db = this.getWritableDatabase();
         ContentValues values = new ContentValues();
 
-        values.put("book_id", borrowing.getBookId());
-        values.put("user_id", borrowing.getUserId());
-
-        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault());
-
-        if (borrowing.getBorrowingStart() != null) {
-            values.put("borrow_date", dateFormat.format(borrowing.getBorrowingStart()));
-        }
-
-        if (borrowing.getBorrowingEnd() != null) {
-            values.put("return_date", dateFormat.format(borrowing.getBorrowingEnd()));
-        }
+        values.put(KEY_BOOK_ID, borrowing.getBookId());
+        values.put(KEY_USER_ID, borrowing.getUserId());
+        values.put(KEY_BORROW_DATE, borrowing.getBorrowingStart());
+        values.put(KEY_RETURN_DATE, borrowing.getBorrowingEnd());
 
         long id = db.insert("borrowings", null, values);
         db.close();
@@ -315,27 +370,10 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 new String[]{String.valueOf(id)}, null, null, null);
 
         if (cursor.moveToFirst()) {
-            SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault());
-
             long bookId = cursor.getLong(0);
             long userId = cursor.getLong(1);
-
-            Date borrowDate = null;
-            Date returnDate = null;
-
-            try {
-                String borrowDateStr = cursor.getString(2);
-                if (borrowDateStr != null) {
-                    borrowDate = dateFormat.parse(borrowDateStr);
-                }
-
-                String returnDateStr = cursor.getString(3);
-                if (returnDateStr != null) {
-                    returnDate = dateFormat.parse(returnDateStr);
-                }
-            } catch (ParseException e) {
-                e.printStackTrace();
-            }
+            long borrowDate = cursor.getLong(2);
+            long returnDate = cursor.getLong(3);
 
             borrowing = new Borrowing(id, bookId, userId, borrowDate, returnDate);
             cursor.close();
@@ -369,24 +407,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 long id = cursor.getLong(idIndex);
                 long bookId = cursor.getLong(bookIdIndex);
                 long userId = cursor.getLong(userIdIndex);
-
-                Date borrowDate = null;
-                Date returnDate = null;
-
-                try {
-                    String borrowDateStr = cursor.getString(borrowDateIndex);
-                    if (borrowDateStr != null && !borrowDateStr.isEmpty()) {
-                        borrowDate = dateFormat.parse(borrowDateStr);
-                    }
-
-                    String returnDateStr = cursor.getString(returnDateIndex);
-                    if (returnDateStr != null && !returnDateStr.isEmpty()) {
-                        returnDate = dateFormat.parse(returnDateStr);
-                    }
-                } catch (ParseException e) {
-                    e.printStackTrace();
-                    // Можно добавить логирование или обработку ошибки парсинга даты
-                }
+                long borrowDate = cursor.getLong(borrowDateIndex);
+                long returnDate = cursor.getLong(returnDateIndex);
 
                 Borrowing borrowing = new Borrowing(id, bookId, userId, borrowDate, returnDate);
                 borrowings.add(borrowing);
@@ -404,16 +426,9 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
         values.put("book_id", borrowing.getBookId());
         values.put("user_id", borrowing.getUserId());
+        values.put("borrow_date", borrowing.getBorrowingStart());
+        values.put("return_date", borrowing.getBorrowingEnd());
 
-        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault());
-
-        if (borrowing.getBorrowingStart() != null) {
-            values.put("borrow_date", dateFormat.format(borrowing.getBorrowingStart()));
-        }
-
-        if (borrowing.getBorrowingEnd() != null) {
-            values.put("return_date", dateFormat.format(borrowing.getBorrowingEnd()));
-        }
         int rowsAffected = db.update("borrowings", values, "id = ?", new String[]{String.valueOf(borrowing.getId())});
         db.close();
         return rowsAffected;
@@ -423,6 +438,41 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         SQLiteDatabase db = this.getWritableDatabase();
         db.delete("borrowings", "id = ?", new String[]{String.valueOf(id)});
         db.close();
+    }
+
+    public boolean removeBorrowingByBookId(long bookId) {
+        SQLiteDatabase db = getWritableDatabase();
+        boolean success = false;
+
+        try {
+            db.beginTransaction();
+
+            // Удаляем запись о заимствовании
+            int deletedRows = db.delete("borrowings", "book_id = ?", new String[]{String.valueOf(bookId)});
+
+            if (deletedRows > 0) {
+                // Если запись была удалена, обновляем статус книги
+                ContentValues values = new ContentValues();
+                values.put(KEY_BORROWED, 0); // Предполагаем, что у вас есть поле is_borrowed в таблице books
+
+                int updatedRows = db.update("books", values, "id = ?", new String[]{String.valueOf(bookId)});
+
+                if (updatedRows > 0) {
+                    success = true;
+                }
+            }
+
+            if (success) {
+                db.setTransactionSuccessful();
+            }
+        } catch (Exception e) {
+            Log.e("DatabaseHelper", "Error removing borrowing: " + e.getMessage());
+        } finally {
+            db.endTransaction();
+            db.close();
+        }
+
+        return success;
     }
 
 }

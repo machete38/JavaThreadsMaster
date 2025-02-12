@@ -1,15 +1,18 @@
 package com.example.javathreadsmaster.models;
 
+import android.util.Log;
+
 import java.util.Date;
 
 public class Borrowing {
     long id;
     long bookId;
     long userId;
-    Date borrowingStart;
-    Date borrowingEnd;
+    long borrowingStart;
+    long borrowingEnd;
 
-    public Borrowing(long id, long bookId, long userId, Date borrowingStart, Date borrowingEnd) {
+    public Borrowing(long id, long bookId, long userId, long borrowingStart, long borrowingEnd) {
+        Log.d("BORROWING: NEW", "book id:"+ bookId);
         this.id = id;
         this.bookId = bookId;
         this.userId = userId;
@@ -41,19 +44,19 @@ public class Borrowing {
         this.userId = userId;
     }
 
-    public Date getBorrowingStart() {
+    public long getBorrowingStart() {
         return borrowingStart;
     }
 
-    public void setBorrowingStart(Date borrowingStart) {
+    public void setBorrowingStart(long borrowingStart) {
         this.borrowingStart = borrowingStart;
     }
 
-    public Date getBorrowingEnd() {
+    public long getBorrowingEnd() {
         return borrowingEnd;
     }
 
-    public void setBorrowingEnd(Date borrowingEnd) {
+    public void setBorrowingEnd(long borrowingEnd) {
         this.borrowingEnd = borrowingEnd;
     }
 }

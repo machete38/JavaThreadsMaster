@@ -1,3 +1,3 @@
 Освоение потоков Java
 
-Включает Future, AsyncTask, ExecutorService
+Использует CompletableFuture, Future, AsyncTask, ExecutorService

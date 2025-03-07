@@ -16,9 +16,12 @@ import androidx.core.content.ContextCompat;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
+import androidx.work.WorkManager;
 
 import com.example.javathreadsmaster.databinding.ActivityMainBinding;
 import com.example.javathreadsmaster.services.BookReturnReminderService;
+import com.example.javathreadsmaster.utils.PermissionUtils;
+import com.example.javathreadsmaster.utils.WorkManagerUtils;
 
 public class MainActivity extends AppCompatActivity {
     private static final int NOTIFICATION_PERMISSION_CODE = 123;
@@ -36,21 +39,20 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void startBookReturnReminderService() {
-        if (checkNotificationPermission()) {
-            Intent serviceIntent = new Intent(this, BookReturnReminderService.class);
-            startService(serviceIntent);
+        if (PermissionUtils.INSTANCE.checkNotificationPermission(this)) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+                Intent serviceIntent = new Intent(this, BookReturnReminderService.class);
+                startService(serviceIntent);
+            }
+            else
+            {
+                WorkManagerUtils.scheduleBooksReturnReminder(this, 24);
+            }
+
         }
     }
 
-    private boolean checkNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, "android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this, new String[]{"android.permission.POST_NOTIFICATIONS"}, NOTIFICATION_PERMISSION_CODE);
-                return false;
-            }
-        }
-        return true;
-    }
+
 
     private void setButtonClickListeners() {
         binding.btnManageBooks.setOnClickListener(new View.OnClickListener() {
